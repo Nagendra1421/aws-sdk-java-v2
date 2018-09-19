@@ -15,7 +15,8 @@
 
 package software.amazon.awssdk.core.internal.http.pipeline.stages;
 
-import static software.amazon.awssdk.core.internal.http.timers.TimerUtils.timeCompletableFuture;
+import static software.amazon.awssdk.core.internal.http.timers.TimerUtils.resolveTimeoutInMillis;
+import static software.amazon.awssdk.core.internal.http.timers.TimerUtils.timeAsyncTaskIfNeeded;
 
 import java.nio.ByteBuffer;
 import java.time.Duration;
@@ -25,7 +26,6 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import org.reactivestreams.Publisher;
 import software.amazon.awssdk.annotations.SdkInternalApi;
-import software.amazon.awssdk.core.RequestOverrideConfiguration;
 import software.amazon.awssdk.core.SdkStandardLogger;
 import software.amazon.awssdk.core.client.config.SdkAdvancedAsyncClientOption;
 import software.amazon.awssdk.core.client.config.SdkClientOption;
@@ -49,7 +49,6 @@ import software.amazon.awssdk.http.async.SdkAsyncHttpClient;
 import software.amazon.awssdk.http.async.SdkHttpRequestProvider;
 import software.amazon.awssdk.http.async.SdkHttpResponseHandler;
 import software.amazon.awssdk.utils.Logger;
-import software.amazon.awssdk.utils.OptionalUtils;
 
 /**
  * Delegate to the HTTP implementation to make an HTTP request and receive the response.
@@ -91,7 +90,7 @@ public final class MakeAsyncHttpRequestStage<OutputT>
     private CompletableFuture<Response<OutputT>> executeHttpRequest(SdkHttpFullRequest request,
                                                                     RequestExecutionContext context) throws Exception {
 
-        long timeout = apiCallAttemptTimeoutInMillis(context.requestConfig());
+        long timeout = resolveTimeoutInMillis(context.requestConfig()::apiCallAttemptTimeout, apiCallAttemptTimeout);
         Completable completable = new Completable(timeout);
 
         SdkHttpResponseHandler<Response<OutputT>> handler = new ResponseHandler(completable);
@@ -215,7 +214,7 @@ public final class MakeAsyncHttpRequestStage<OutputT>
         private TimeoutTracker timeoutTracker;
 
         Completable(long timeoutInMills) {
-            timeoutTracker = timeCompletableFuture(completableFuture, timeoutExecutor,
+            timeoutTracker = timeAsyncTaskIfNeeded(completableFuture, timeoutExecutor,
                                                    ApiCallAttemptTimeoutException.create(timeoutInMills),
                                                    timeoutInMills);
         }
@@ -250,12 +249,5 @@ public final class MakeAsyncHttpRequestStage<OutputT>
                                                   "client's async configuration setting or you can reduce the amount of work " +
                                                   "performed on the async execution thread.", e);
         }
-    }
-
-    private long apiCallAttemptTimeoutInMillis(RequestOverrideConfiguration requestConfig) {
-        return OptionalUtils.firstPresent(
-            requestConfig.apiCallAttemptTimeout(), () -> apiCallAttemptTimeout)
-                            .map(Duration::toMillis)
-                            .orElse(0L);
     }
 }

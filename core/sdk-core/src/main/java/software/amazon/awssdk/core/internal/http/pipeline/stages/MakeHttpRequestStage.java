@@ -15,12 +15,18 @@
 
 package software.amazon.awssdk.core.internal.http.pipeline.stages;
 
+import static software.amazon.awssdk.core.internal.http.timers.TimerUtils.resolveTimeoutInMillis;
+import static software.amazon.awssdk.core.internal.http.timers.TimerUtils.timeSyncTaskIfNeeded;
+
+import java.time.Duration;
+import java.util.concurrent.ScheduledExecutorService;
 import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.core.client.config.SdkClientOption;
 import software.amazon.awssdk.core.internal.http.HttpClientDependencies;
 import software.amazon.awssdk.core.internal.http.InterruptMonitor;
 import software.amazon.awssdk.core.internal.http.RequestExecutionContext;
 import software.amazon.awssdk.core.internal.http.pipeline.RequestPipeline;
+import software.amazon.awssdk.core.internal.http.timers.TimeoutTracker;
 import software.amazon.awssdk.http.AbortableCallable;
 import software.amazon.awssdk.http.SdkHttpClient;
 import software.amazon.awssdk.http.SdkHttpFullRequest;
@@ -36,9 +42,13 @@ public class MakeHttpRequestStage
     implements RequestPipeline<SdkHttpFullRequest, Pair<SdkHttpFullRequest, SdkHttpFullResponse>> {
 
     private final SdkHttpClient sdkHttpClient;
+    private final Duration apiCallAttemptTimeout;
+    private final ScheduledExecutorService timeoutExecutor;
 
     public MakeHttpRequestStage(HttpClientDependencies dependencies) {
         this.sdkHttpClient = dependencies.clientConfiguration().option(SdkClientOption.SYNC_HTTP_CLIENT);
+        this.apiCallAttemptTimeout = dependencies.clientConfiguration().option(SdkClientOption.API_CALL_ATTEMPT_TIMEOUT);
+        this.timeoutExecutor = dependencies.clientConfiguration().option(SdkClientOption.SCHEDULED_EXECUTOR_SERVICE);
     }
 
     /**
@@ -53,8 +63,20 @@ public class MakeHttpRequestStage
 
     private SdkHttpFullResponse executeHttpRequest(SdkHttpFullRequest request, RequestExecutionContext context) throws Exception {
         final AbortableCallable<SdkHttpFullResponse> requestCallable = sdkHttpClient
-                .prepareRequest(request, SdkRequestContext.builder().build());
+            .prepareRequest(request, SdkRequestContext.builder().build());
 
-        return requestCallable.call();
+        long timeoutInMillis = resolveTimeoutInMillis(context.requestConfig()::apiCallAttemptTimeout, apiCallAttemptTimeout);
+
+        TimeoutTracker timeoutTracker = timeSyncTaskIfNeeded(timeoutExecutor, timeoutInMillis, false);
+        timeoutTracker.abortable(requestCallable);
+
+        context.apiCallAttemptTimeoutTracker(timeoutTracker);
+        context.apiCallTimeoutTracker().abortable(requestCallable);
+
+        try {
+            return requestCallable.call();
+        } finally {
+            timeoutTracker.cancel();
+        }
     }
 }

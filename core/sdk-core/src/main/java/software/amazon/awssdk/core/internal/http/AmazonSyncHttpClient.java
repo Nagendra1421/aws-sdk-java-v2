@@ -30,6 +30,7 @@ import software.amazon.awssdk.core.internal.client.config.SdkClientConfiguration
 import software.amazon.awssdk.core.internal.http.pipeline.RequestPipelineBuilder;
 import software.amazon.awssdk.core.internal.http.pipeline.stages.AfterExecutionInterceptorsStage;
 import software.amazon.awssdk.core.internal.http.pipeline.stages.AfterTransmissionExecutionInterceptorsStage;
+import software.amazon.awssdk.core.internal.http.pipeline.stages.ApiCallTimeoutTrackingStage;
 import software.amazon.awssdk.core.internal.http.pipeline.stages.ApplyTransactionIdStage;
 import software.amazon.awssdk.core.internal.http.pipeline.stages.ApplyUserAgentStage;
 import software.amazon.awssdk.core.internal.http.pipeline.stages.BeforeTransmissionExecutionInterceptorsStage;
@@ -45,6 +46,7 @@ import software.amazon.awssdk.core.internal.http.pipeline.stages.MergeCustomQuer
 import software.amazon.awssdk.core.internal.http.pipeline.stages.MoveParametersToBodyStage;
 import software.amazon.awssdk.core.internal.http.pipeline.stages.RetryableStage;
 import software.amazon.awssdk.core.internal.http.pipeline.stages.SigningStage;
+import software.amazon.awssdk.core.internal.http.pipeline.stages.TimeoutExceptionHandlingStage;
 import software.amazon.awssdk.core.internal.http.pipeline.stages.UnwrapResponseContainer;
 import software.amazon.awssdk.core.internal.retry.SdkDefaultRetrySetting;
 import software.amazon.awssdk.core.internal.util.CapacityManager;
@@ -263,8 +265,10 @@ public final class AmazonSyncHttpClient implements SdkAutoCloseable {
                                              .then(() -> new HandleResponseStage<>(
                                                  getNonNullResponseHandler(responseHandler),
                                                  getNonNullResponseHandler(errorResponseHandler)))
+                                             .wrappedWith(TimeoutExceptionHandlingStage::new)
                                              .wrappedWith(RetryableStage::new)::build)
-                                   .wrappedWith(StreamManagingStage::new)::build)
+                                   .wrappedWith(StreamManagingStage::new)
+                                   .wrappedWith(ApiCallTimeoutTrackingStage::new)::build)
                     .then(() -> new UnwrapResponseContainer<>())
                     .then(() -> new AfterExecutionInterceptorsStage<>())
                     .wrappedWith(ExecutionFailureExceptionReportingStage::new)

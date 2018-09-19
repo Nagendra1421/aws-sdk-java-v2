@@ -15,35 +15,28 @@
 
 package software.amazon.awssdk.core.internal.http.timers;
 
-import java.util.concurrent.CompletableFuture;
 import software.amazon.awssdk.annotations.SdkInternalApi;
-import software.amazon.awssdk.core.exception.SdkException;
 import software.amazon.awssdk.http.Abortable;
 import software.amazon.awssdk.utils.Logger;
 import software.amazon.awssdk.utils.Validate;
 
 /**
- * Implementation of {@link TimeoutTask} for asynchronous operations to be scheduled to fail
- * the {@link CompletableFuture} and abort the asynchronous requests.
+ * {@link TimeoutTask} to be scheduled for synchronous operations.
  */
 @SdkInternalApi
-public class AsyncTimeoutTask implements TimeoutTask {
-    private static final Logger log = Logger.loggerFor(AsyncTimeoutTask.class);
-    private final SdkException exception;
+public final class SyncTimeoutTask implements TimeoutTask {
+    private static final Logger log = Logger.loggerFor(SyncTimeoutTask.class);
+    private final Thread threadToInterrupt;
     private volatile boolean hasExecuted;
 
-    private final CompletableFuture<?> completableFuture;
     private Abortable abortable;
 
-    /**
-     * Constructs a new {@link AsyncTimeoutTask}.
-     *
-     * @param completableFuture the {@link CompletableFuture} to fail
-     * @param exception the exception to thrown
-     */
-    public AsyncTimeoutTask(CompletableFuture<?> completableFuture, SdkException exception) {
-        this.completableFuture = Validate.paramNotNull(completableFuture, "completableFuture");
-        this.exception = Validate.paramNotNull(exception, "exception");
+    SyncTimeoutTask() {
+        this.threadToInterrupt = null;
+    }
+
+    SyncTimeoutTask(Thread threadToInterrupt) {
+        this.threadToInterrupt = Validate.paramNotNull(threadToInterrupt, "threadToInterrupt");
     }
 
     @Override
@@ -53,9 +46,10 @@ public class AsyncTimeoutTask implements TimeoutTask {
 
     @Override
     public void run() {
+        log.debug(() -> "Timing out, aborting the task");
         hasExecuted = true;
-        if (!completableFuture.isDone()) {
-            completableFuture.completeExceptionally(exception);
+        if (threadToInterrupt != null && !threadToInterrupt.isInterrupted()) {
+            threadToInterrupt.interrupt();
         }
 
         if (abortable != null) {

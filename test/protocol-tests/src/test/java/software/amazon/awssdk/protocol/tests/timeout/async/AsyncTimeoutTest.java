@@ -13,7 +13,7 @@
  * permissions and limitations under the License.
  */
 
-package software.amazon.awssdk.protocol.tests.timeout;
+package software.amazon.awssdk.protocol.tests.timeout.async;
 
 import static com.github.tomakehurst.wiremock.client.WireMock.aResponse;
 import static com.github.tomakehurst.wiremock.client.WireMock.anyUrl;
@@ -88,6 +88,4 @@ public class AsyncTimeoutTest {
         CompletableFuture<AllTypesResponse> allTypesResponseCompletableFuture = client.allTypes(SdkBuilder::build);
         assertThat(allTypesResponseCompletableFuture.join()).isNotNull();
     }
-
-
 }

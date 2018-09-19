@@ -15,7 +15,8 @@
 
 package software.amazon.awssdk.core.internal.http.pipeline.stages;
 
-import static software.amazon.awssdk.core.internal.http.timers.TimerUtils.timeCompletableFuture;
+import static software.amazon.awssdk.core.internal.http.timers.TimerUtils.resolveTimeoutInMillis;
+import static software.amazon.awssdk.core.internal.http.timers.TimerUtils.timeAsyncTaskIfNeeded;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -28,7 +29,6 @@ import org.slf4j.LoggerFactory;
 import software.amazon.awssdk.annotations.ReviewBeforeRelease;
 import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.core.RequestOption;
-import software.amazon.awssdk.core.RequestOverrideConfiguration;
 import software.amazon.awssdk.core.SdkStandardLogger;
 import software.amazon.awssdk.core.client.config.SdkClientOption;
 import software.amazon.awssdk.core.exception.ApiCallTimeoutException;
@@ -48,7 +48,6 @@ import software.amazon.awssdk.core.retry.RetryPolicy;
 import software.amazon.awssdk.core.retry.RetryUtils;
 import software.amazon.awssdk.http.SdkHttpFullRequest;
 import software.amazon.awssdk.http.async.SdkHttpResponseHandler;
-import software.amazon.awssdk.utils.OptionalUtils;
 
 /**
  * Wrapper around the pipeline for a single request to provide retry functionality.
@@ -122,8 +121,9 @@ public final class AsyncRetryableStage<OutputT> implements RequestPipeline<SdkHt
         public CompletableFuture<Response<OutputT>> execute() throws Exception {
             CompletableFuture<Response<OutputT>> future = new CompletableFuture<>();
 
-            long apiCallTimeoutInMillis = getApiCallTimeoutInMillis(context.requestConfig());
-            TimeoutTracker timeoutTracker = timeCompletableFuture(future,
+            long apiCallTimeoutInMillis = resolveTimeoutInMillis(context.requestConfig()::apiCallTimeout,
+                                                                 clientConfig.option(SdkClientOption.API_CALL_TIMEOUT));
+            TimeoutTracker timeoutTracker = timeAsyncTaskIfNeeded(future,
                                                                   scheduledExecutor,
                                                                   ApiCallTimeoutException.create(apiCallTimeoutInMillis),
                                                                   apiCallTimeoutInMillis);
@@ -247,14 +247,5 @@ public final class AsyncRetryableStage<OutputT> implements RequestPipeline<SdkHt
         private int readLimit() {
             return RequestOption.DEFAULT_STREAM_BUFFER_SIZE;
         }
-    }
-
-    private long getApiCallTimeoutInMillis(RequestOverrideConfiguration requestConfig) {
-        return OptionalUtils.firstPresent(
-            requestConfig.apiCallTimeout(),
-            () -> clientConfig.option(SdkClientOption.API_CALL_TIMEOUT))
-                            .map(Duration::toMillis)
-                            .orElse(0L);
-
     }
 }

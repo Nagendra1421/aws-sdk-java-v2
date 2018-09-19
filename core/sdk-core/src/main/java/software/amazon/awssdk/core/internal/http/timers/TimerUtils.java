@@ -15,12 +15,16 @@
 
 package software.amazon.awssdk.core.internal.http.timers;
 
+import java.time.Duration;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import software.amazon.awssdk.annotations.SdkInternalApi;
 import software.amazon.awssdk.core.exception.SdkClientException;
+import software.amazon.awssdk.utils.OptionalUtils;
 
 @SdkInternalApi
 public final class TimerUtils {
@@ -39,7 +43,7 @@ public final class TimerUtils {
      * @param <T> the type of the {@link CompletableFuture}
      * @return a {@link TimeoutTracker}
      */
-    public static <T> TimeoutTracker timeCompletableFuture(CompletableFuture<T> completableFuture,
+    public static <T> TimeoutTracker timeAsyncTaskIfNeeded(CompletableFuture<T> completableFuture,
                                                            ScheduledExecutorService timeoutExecutor,
                                                            SdkClientException exceptionToThrow,
                                                            long timeoutInMills) {
@@ -58,5 +62,34 @@ public final class TimerUtils {
         completableFuture.whenComplete((o, t) -> timeoutTracker.cancel());
 
         return timeoutTracker;
+    }
+
+    /**
+     * Schedule a {@link TimeoutTask} that aborts the task if not otherwise completed before the given timeout.
+     *
+     * @param timeoutExecutor the executor to execute the {@link TimeoutTask}
+     * @return a {@link TimeoutTracker}
+     */
+    public static TimeoutTracker timeSyncTaskIfNeeded(ScheduledExecutorService timeoutExecutor,
+                                                      long timeoutInMills,
+                                                      boolean isInterruptThread) {
+        if (timeoutInMills <= 0) {
+            return NoOpTimeoutTracker.INSTANCE;
+        }
+
+        SyncTimeoutTask timeoutTask = isInterruptThread ? new SyncTimeoutTask(Thread.currentThread()) :
+                                      new SyncTimeoutTask();
+
+        ScheduledFuture<?> scheduledFuture =
+            timeoutExecutor.schedule(timeoutTask,
+                                     timeoutInMills,
+                                     TimeUnit.MILLISECONDS);
+        return new ApiCallTimeoutTracker(timeoutTask, scheduledFuture);
+    }
+
+    public static long resolveTimeoutInMillis(Supplier<Optional<Duration>> supplier, Duration fallback) {
+        return OptionalUtils.firstPresent(supplier.get(), () -> fallback)
+                            .map(Duration::toMillis)
+                            .orElse(0L);
     }
 }

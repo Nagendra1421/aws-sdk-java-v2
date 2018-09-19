@@ -30,6 +30,7 @@ public class AfterTransmissionExecutionInterceptorsStage
     @Override
     public Pair<SdkHttpFullRequest, SdkHttpFullResponse> execute(Pair<SdkHttpFullRequest, SdkHttpFullResponse> input,
                                                                  RequestExecutionContext context) throws Exception {
+        InterruptMonitor.checkInterrupted();
         // Update interceptor context
         InterceptorContext interceptorContext =
                 context.executionContext().interceptorContext().copy(b -> b.httpResponse(input.right()));

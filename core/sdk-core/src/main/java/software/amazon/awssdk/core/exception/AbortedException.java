@@ -26,7 +26,7 @@ import software.amazon.awssdk.annotations.SdkPublicApi;
 @SdkPublicApi
 public final class AbortedException extends SdkClientException {
 
-    protected AbortedException(Builder b) {
+    private AbortedException(Builder b) {
         super(b);
     }
 
