@@ -14,7 +14,7 @@ HTTP implementation to further customize your applications. You can get started 
 * [SDK Blog][blog]
 * [Giving Feedback](#giving-feedback)
 
-#### Production Readiness
+## Production Readiness
 - [kinesis][kinesis], [dynamodb][dynamodb], [cloudwatch][cloudwatch] are released under `2.0.x` and are production-ready. 
 - The rest of the modules are still in preview and are **NOT** recommended for production use yet.
 
